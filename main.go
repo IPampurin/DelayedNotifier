@@ -1,21 +1,29 @@
 package main
 
 import (
-	"github.com/IPampurin/DelayedNotifier/pkg/db"
-	"github.com/IPampurin/DelayedNotifier/pkg/server"
+	"log"
+
+	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
 )
 
 func main() {
 
 	var err error
 
-	err = db.InitDB()
+	cfg, err := configuration.ReadConfig()
 	if err != nil {
-
+		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
 
-	err = server.Run()
-	if err != nil {
+	/*
+		err = db.InitDB()
+		if err != nil {
 
-	}
+		}
+
+		err = server.Run()
+		if err != nil {
+
+		}
+	*/
 }
