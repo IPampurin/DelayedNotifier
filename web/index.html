@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DelayedNotifier — как Wildberries, только для уведомлений</title>
     <style>
+        /* Стили остаются без изменений (как в предыдущей версии) */
         * {
             margin: 0;
             padding: 0;
@@ -13,15 +14,14 @@
         }
 
         body {
-            background: #f8f8f8;  /* Светло-серый фон, как у WB */
+            background: #f8f8f8;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
         }
 
-        /* Шапка в стиле WB — фиолетовая полоса */
         .wb-header {
-            background: linear-gradient(90deg, #c85b9e, #a55cff);  /* Тот самый фиолетовый */
+            background: linear-gradient(90deg, #ff5e8b, #4a90e2); /* Яркий градиент */
             color: white;
             padding: 16px 24px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -81,7 +81,6 @@
             flex: 1;
         }
 
-        /* Заголовки страницы */
         h2 {
             font-size: 20px;
             font-weight: 600;
@@ -98,7 +97,6 @@
             font-size: 28px;
         }
 
-        /* Карточка формы — как блок товара */
         .form-card {
             background: white;
             border-radius: 16px;
@@ -160,7 +158,6 @@
             margin-top: 6px;
         }
 
-        /* Кнопка — в стиле WB: фиолетовая, с закруглениями */
         .wb-button {
             background: #8b57b5;
             color: white;
@@ -229,7 +226,6 @@
             background: #218838;
         }
 
-        /* Таблица в стиле "карточки товаров" */
         .table-wrapper {
             background: white;
             border-radius: 20px;
@@ -274,7 +270,6 @@
             background: #fafafa;
         }
 
-        /* Бейджи статусов */
         .status-badge {
             display: inline-block;
             padding: 6px 12px;
@@ -311,7 +306,6 @@
             flex-wrap: wrap;
         }
 
-        /* Футер как на WB */
         .wb-footer {
             background: white;
             border-top: 1px solid #eee;
@@ -322,15 +316,12 @@
             margin-top: 40px;
         }
 
-        .price-tag {
-            color: #8b57b5;
-            font-weight: 700;
-            font-size: 16px;
-        }
-
-        @media (max-width: 800px) {
-            th, td { font-size: 13px; padding: 12px 8px; }
-            .header-tagline { display: none; }
+        .uid-short {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -347,7 +338,7 @@
     </header>
 
     <div class="container">
-        <!-- Форма создания — как карточка товара -->
+        <!-- Форма создания -->
         <h2>Создать уведомление</h2>
         <div class="form-card">
             <form id="createForm">
@@ -386,13 +377,13 @@
             </form>
         </div>
 
-        <!-- Таблица уведомлений (в стиле WB) -->
+        <!-- Таблица уведомлений -->
         <h2>Созданные уведомления</h2>
         <div class="table-wrapper">
             <table id="notificationsTable">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>UID (первые символы)</th>
                         <th>Пользователь</th>
                         <th>Email</th>
                         <th>Telegram</th>
@@ -416,9 +407,10 @@
     </footer>
 
     <script>
-        // --- Тот же самый JavaScript, что и у тебя, без изменений ---
-        const STORAGE_KEY = 'delayedNotifier_notifications_v2';
-        let notifications = [];
+        // --- Обновлённый скрипт под UUID ---
+        const STORAGE_KEY = 'delayedNotifier_notifications_v3'; // новый ключ из-за смены структуры
+
+        let notifications = []; // каждый объект содержит uid (строка), user_id, email, telegram, content, send_for (ISO), status, send_at, last_error
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFromStorage();
@@ -486,13 +478,13 @@
             if (email) channels.push('email');
             if (telegram) channels.push('telegram');
 
+            // Отправляем на сервер поля в формате, соответствующем структуре Notification (с тегами json)
             const payload = {
                 user_id: user_id,
-                email: email,
-                telegram: telegram,
                 channel: channels,
                 content: content,
                 send_for: send_for_iso
+                // email и telegram не отправляем, они нужны только для локального отображения
             };
 
             try {
@@ -507,12 +499,13 @@
                 }
 
                 const result = await response.json();
-                if (!result.id) {
-                    throw new Error('Сервер не вернул ID');
+                // Ожидаем, что сервер вернёт JSON с полем uid (UUID)
+                if (!result.uid) {
+                    throw new Error('Сервер не вернул UID');
                 }
 
                 const newNotification = {
-                    id: result.id,
+                    uid: result.uid,
                     user_id: user_id,
                     email: email,
                     telegram: telegram,
@@ -525,7 +518,9 @@
                 notifications.push(newNotification);
                 saveToStorage();
                 renderTable();
-                fetchNotificationStatus(result.id);
+
+                // Сразу запрашиваем актуальный статус
+                fetchNotificationStatus(result.uid);
 
                 e.target.reset();
                 document.getElementById('user_id').value = 1;
@@ -535,12 +530,12 @@
             }
         });
 
-        async function fetchNotificationStatus(id) {
+        async function fetchNotificationStatus(uid) {
             try {
-                const response = await fetch(`/notify/${id}`);
+                const response = await fetch(`/notify/${uid}`);
                 if (!response.ok) {
                     if (response.status === 404) {
-                        notifications = notifications.filter(n => n.id !== id);
+                        notifications = notifications.filter(n => n.uid !== uid);
                         saveToStorage();
                         renderTable();
                         return;
@@ -548,33 +543,36 @@
                     throw new Error(`HTTP error ${response.status}`);
                 }
                 const data = await response.json();
-                const index = notifications.findIndex(n => n.id === id);
+                const index = notifications.findIndex(n => n.uid === uid);
                 if (index !== -1) {
+                    // Обновляем поля, которые могли измениться (сервер может вернуть status, send_at, last_error)
                     notifications[index].status = data.status || notifications[index].status;
+                    // send_at может быть null или строкой
                     notifications[index].send_at = data.send_at || null;
                     notifications[index].last_error = data.last_error || '';
+                    // Также можно обновить другие поля, если сервер их возвращает (например, send_for), но пока не трогаем
                     saveToStorage();
                     renderTable();
                 }
             } catch (error) {
-                console.error(`Ошибка получения статуса для ID ${id}:`, error);
+                console.error(`Ошибка получения статуса для UID ${uid}:`, error);
             }
         }
 
         async function refreshAllStatuses() {
             for (const n of notifications) {
-                await fetchNotificationStatus(n.id);
+                await fetchNotificationStatus(n.uid);
             }
         }
 
-        async function deleteNotification(id) {
+        async function deleteNotification(uid) {
             if (!confirm('Удалить уведомление?')) return;
             try {
-                const response = await fetch(`/notify/${id}`, { method: 'DELETE' });
+                const response = await fetch(`/notify/${uid}`, { method: 'DELETE' });
                 if (!response.ok && response.status !== 404) {
                     throw new Error(`HTTP error ${response.status}`);
                 }
-                notifications = notifications.filter(n => n.id !== id);
+                notifications = notifications.filter(n => n.uid !== uid);
                 saveToStorage();
                 renderTable();
             } catch (error) {
@@ -588,6 +586,11 @@
             return d.toLocaleString();
         }
 
+        function shortenUid(uid) {
+            if (!uid) return '-';
+            return uid.substring(0, 8) + '…';
+        }
+
         function renderTable() {
             const tbody = document.getElementById('notificationsBody');
             tbody.innerHTML = '';
@@ -597,24 +600,27 @@
                 return;
             }
 
-            notifications.sort((a, b) => a.id - b.id);
+            // Сортируем по запланированному времени (от ближайших к дальним)
+            notifications.sort((a, b) => new Date(a.send_for) - new Date(b.send_for));
 
             for (const n of notifications) {
                 const row = document.createElement('tr');
 
+                // Используем innerHTML для удобства, но экранируем content (он может содержать кавычки)
+                const safeContent = n.content.replace(/"/g, '&quot;');
                 row.innerHTML = `
-                    <td>${n.id}</td>
+                    <td><span class="uid-short" title="${n.uid}">${shortenUid(n.uid)}</span></td>
                     <td>${n.user_id}</td>
                     <td>${n.email || '-'}</td>
                     <td>${n.telegram || '-'}</td>
-                    <td title="${n.content.replace(/"/g, '&quot;')}">${n.content.length > 30 ? n.content.substring(0, 27) + '...' : n.content}</td>
+                    <td title="${safeContent}">${n.content.length > 30 ? n.content.substring(0, 27) + '...' : n.content}</td>
                     <td>${formatDate(n.send_for)}</td>
                     <td><span class="status-badge status-${n.status}">${n.status || 'unknown'}</span></td>
                     <td>${formatDate(n.send_at)}</td>
                     <td>${n.last_error ? `<div class="last-error">${n.last_error}</div>` : '-'}</td>
                     <td class="actions">
-                        <button class="refresh-btn" onclick="fetchNotificationStatus(${n.id})">⟳</button>
-                        <button class="delete-btn" onclick="deleteNotification(${n.id})">✕</button>
+                        <button class="refresh-btn" onclick="fetchNotificationStatus('${n.uid}')">⟳</button>
+                        <button class="delete-btn" onclick="deleteNotification('${n.uid}')">✕</button>
                     </td>
                 `;
                 tbody.appendChild(row);
