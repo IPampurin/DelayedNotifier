@@ -1,5 +1,8 @@
 package cache
 
-func InitCache() {
+import "github.com/IPampurin/DelayedNotifier/pkg/configuration"
 
+func InitCache(cfgCache *configuration.ConfCache) error {
+
+	return nil
 }

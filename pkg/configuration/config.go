@@ -10,6 +10,7 @@ import (
 type ConfServer struct {
 	HostName string `env:"SERVICE_HOST_NAME" env-default:"localhost"`
 	Port     int    `env:"SERVICE_PORT"       env-default:"8081"`
+	GinMode  string `env:"GIN_MODE"           env-default:"debug"`
 }
 
 // ConfDB — параметры подключения к PostgreSQL
@@ -21,8 +22,8 @@ type ConfDB struct {
 	Password string `env:"DB_PASSWORD"  env-default:"postgres"`
 }
 
-// ConfRedis — параметры Redis
-type ConfRedis struct {
+// ConfCache — параметры Redis
+type ConfCache struct {
 	HostName string        `env:"REDIS_HOST_NAME" env-default:"dbRedis"`
 	Port     int           `env:"REDIS_PORT"      env-default:"6379"`
 	Password string        `env:"REDIS_PASSWORD"  env-default:""`
@@ -57,7 +58,7 @@ type ConfScheduler struct {
 type Config struct {
 	Server    ConfServer
 	DB        ConfDB
-	Redis     ConfRedis
+	Redis     ConfCache
 	RabbitMQ  ConfRabbitMQ
 	Consumer  ConfConsumer
 	Scheduler ConfScheduler

@@ -1,6 +1,10 @@
 package db
 
-import "time"
+import (
+	"time"
+
+	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
+)
 
 type Notification struct {
 	ID          int       // идентификатор уведомления, назначается сервисом в момент вызова POST /notify
@@ -15,7 +19,27 @@ type Notification struct {
 	Created_at  time.Time // время создания
 }
 
-func InitDB() error {
+func InitDB(cfgDB *configuration.ConfDB) error {
 
 	return nil
 }
+
+/*
+// CloseDB закрывает соединение с базой
+func CloseDB() {
+
+	// получаем объект *sql.DB для закрытия соединения
+	sqlDB, err := DB.Db.DB()
+	if err != nil {
+		log.Printf("Ошибка при получении SQL соединения: %v", err)
+		return
+	}
+
+	// закрываем соединение
+	if err := sqlDB.Close(); err != nil {
+		log.Printf("Предупреждение: ошибка при закрытии БД: %v", err)
+	} else {
+		log.Println("БД успешно отключена.")
+	}
+}
+*/

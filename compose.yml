@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  
+  # веб сервис
+  service1:
+    build: .
+    container_name: delayed-notifier
+    ports:
+      - ${SERVICE_PORT}:8081
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy 
+    stop_grace_period: 45s
+
+  postgres:
+    image: postgres:16
+    container_name: ${DB_HOST_NAME:-postgres}
+    ports:
+      - ${DB_PORT}:5432
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s    
+
+  redis:
+    image: redis:7
+    container_name: ${REDIS_HOST_NAME:-redis}
+    ports:
+      - ${REDIS_PORT}:6379
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
+      - REDIS_TTL=${REDIS_TTL}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s    
+
+volumes:
+  postgres-db:
+  redis_data:
