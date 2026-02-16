@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
@@ -27,15 +26,15 @@ func Run(cfgServer *configuration.ConfServer, log logger.Logger) error {
 		// используем переданный логгер для записи информации о запросе
 		log.LogRequest(c.Request.Context(), c.Request.Method, c.Request.URL.Path, c.Writer.Status(), duration)
 	})
-
-	// регистрируем эндпоинты согласно заданию
-	apiGroup := engine.Group("/notify")
-	{
-		apiGroup.POST("/", createNotification(log))
-		apiGroup.GET("/:id", getNotification(log))
-		apiGroup.DELETE("/:id", deleteNotification(log))
-	}
-
+	/*
+		// регистрируем эндпоинты согласно заданию
+		apiGroup := engine.Group("/notify")
+		{
+			apiGroup.POST("/", createNotification(log))
+			apiGroup.GET("/:id", getNotification(log))
+			apiGroup.DELETE("/:id", deleteNotification(log))
+		}
+	*/
 	// раздаём статические файлы из папки ./web
 	engine.Static("/static", "./web")
 
@@ -50,37 +49,4 @@ func Run(cfgServer *configuration.ConfServer, log logger.Logger) error {
 
 	// запускаем сервер (блокирующий вызов)
 	return engine.Run(addr)
-}
-
-// Временные обработчики-заглушки.
-func createNotification(log logger.Logger) ginext.HandlerFunc {
-	return func(c *ginext.Context) {
-		// TODO: реализовать создание уведомления
-		log.Ctx(c.Request.Context()).Info("POST /notify вызван")
-		c.JSON(http.StatusOK, ginext.H{
-			"status": "not implemented",
-		})
-	}
-}
-
-func getNotification(log logger.Logger) ginext.HandlerFunc {
-	return func(c *ginext.Context) {
-		id := c.Param("id")
-		log.Ctx(c.Request.Context()).Info("GET /notify/:id", "id", id)
-		c.JSON(http.StatusOK, ginext.H{
-			"id":     id,
-			"status": "not implemented",
-		})
-	}
-}
-
-func deleteNotification(log logger.Logger) ginext.HandlerFunc {
-	return func(c *ginext.Context) {
-		id := c.Param("id")
-		log.Ctx(c.Request.Context()).Info("DELETE /notify/:id", "id", id)
-		c.JSON(http.StatusOK, ginext.H{
-			"id":     id,
-			"status": "not implemented (deleted mock)",
-		})
-	}
 }

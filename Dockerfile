@@ -14,7 +14,6 @@ WORKDIR /app
 
 RUN apk --no-cache add ca-certificates tzdata
 
-COPY .env ./
 COPY --from=builder /app .
 COPY web/ ./web/
 

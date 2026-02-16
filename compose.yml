@@ -2,8 +2,7 @@ version: '3.9'
 
 services:
   
-  # веб сервис
-  service1:
+  delayed-notifier:
     build: .
     container_name: delayed-notifier
     ports:
@@ -16,6 +15,8 @@ services:
       redis:
         condition: service_healthy 
     stop_grace_period: 45s
+    networks:
+      - notifier-network
 
   postgres:
     image: postgres:16
@@ -34,6 +35,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s    
+    networks:
+      - notifier-network
 
   redis:
     image: redis:7
@@ -52,7 +55,14 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s    
+    networks:
+      - notifier-network
+      
 
 volumes:
   postgres-db:
   redis_data:
+
+networks:
+  notifier-network:
+    driver: bridge
