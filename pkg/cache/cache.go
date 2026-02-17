@@ -1,8 +1,93 @@
 package cache
 
-import "github.com/IPampurin/DelayedNotifier/pkg/configuration"
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
 
-func InitCache(cfgCache *configuration.ConfCache) error {
+	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
+	"github.com/IPampurin/DelayedNotifier/pkg/db"
+
+	"github.com/wb-go/wbf/redis"
+	"github.com/wb-go/wbf/retry"
+)
+
+// ClientRedis хранит подключение к БД Redis
+// делаем его публичным, чтобы другие пакеты могли использовать методы
+type ClientRedis struct {
+	*redis.Client
+}
+
+// глобальный экземпляр клиента (синглтон)
+var defaultClient *ClientRedis
+
+// InitRedis запускает работу с Redis
+func InitRedis(cfg *configuration.ConfCache) error {
+
+	// определяем конфигурацию подключения к Redis
+	options := redis.Options{
+		Address:   fmt.Sprintf("%s:%d", cfg.HostName, cfg.Port),
+		Password:  fmt.Sprintf("%s", cfg.Password),
+		MaxMemory: "100mb",
+		Policy:    "allkeys-lru",
+	}
+
+	// получаем экземпляр клиента
+	client := redis.New(options.Address, options.Password, cfg.DB)
+
+	// пробуем подключиться
+	client, err := redis.Connect(options)
+	if err != nil {
+		return fmt.Errorf("ошибка установки соединения с Redis: %v\n", err)
+	}
+
+	// проверяем подключение
+	if err := client.Ping(context.Background()); err != nil {
+		return fmt.Errorf("ошибка подключения к Redis: %v\n", err)
+	}
+
+	// загружаем начальные данные
+	err = loadDataToCache(context.Background(), cfg)
+	if err != nil {
+		log.Printf("ошибка загрузки первичных данных в кэш: %v", err)
+		return err
+	}
+
+	log.Println("Загрузка первичных данных в кэш завершена.")
+
+	return nil
+}
+
+// GetClientRedis возвращает глобальный экземпляр клиента Redis
+func GetClientRedis() *ClientRedis {
+
+	return defaultClient
+}
+
+// val, err := client.GetWithRetry(ctx, strategy, "key") получение значения в соответствии со стратегией ретраев
+
+// loadDataToCache загружает данные за последнее время в кэш при старте
+func loadDataToCache(ctx context.Context, cfg *configuration.ConfCache) error {
+
+	// получаем заказы до установленного порога
+	notifications, err := db.GetClientDB().GetNotificationsLastPeriod(ctx, cfg.Warming)
+	if err != nil {
+		return fmt.Errorf("ошибка при прогреве кэша: %v", err)
+	}
+
+	// определяем стратегию ретраев
+	strategy := retry.Strategy{Attempts: 3, Delay: 100 * time.Millisecond, Backoff: 2}
+
+	// сохраняем данные в redis
+	for i := range notifications {
+		key := fmt.Sprintf("%v", notifications[i].UID)
+		err := GetClientRedis().SetWithExpirationAndRetry(ctx, strategy, key, notifications[i], cfg.TTL)
+		if err != nil {
+			log.Printf("ошибка добавления уведомления %s при прогреве кэша", key)
+			continue
+		}
+	}
 
 	return nil
 }

@@ -24,7 +24,7 @@ const schemaNotifications = `CREATE TABLE notifications (
 	                         CREATE INDEX idx_notifications_status_scheduled ON notifications(status, send_for) WHERE status = 'scheduled';`
 
 // Migration создаёт таблицу notifications, если она не существует.
-func (c *Client) Migration(ctx context.Context) error {
+func (c *ClientPostgres) Migration(ctx context.Context) error {
 
 	// проверяем, существует ли таблица (запрос к information_schema)
 	var tableName string

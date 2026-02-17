@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
+	"github.com/IPampurin/DelayedNotifier/pkg/db"
 	"github.com/IPampurin/DelayedNotifier/pkg/server"
 	"github.com/wb-go/wbf/logger"
 )
@@ -30,21 +31,21 @@ func main() {
 		log.Fatalf("Ошибка создания логгера: %v", err)
 	}
 	defer func() { _ = appLogger.(*logger.ZapAdapter) }()
-	/*
-		// подключаем базу данных
-		err = db.InitDB(&cfg.DB)
-		if err != nil {
-			appLogger.Error("ошибка подключения к БД", "error", err)
-			return
-		}
-		defer db.CloseDB()
-		/*
-			// инициализируем кэш
-			err = cache.InitCache(&cfg.Redis)
-			if err != nil {
-				appLogger.Warn("кэш не работает", "error", err)
-			}
-	*/
+
+	// подключаем базу данных
+	err = db.InitDB(&cfg.DB)
+	if err != nil {
+		appLogger.Error("ошибка подключения к БД", "error", err)
+		return
+	}
+	defer db.CloseDB()
+
+	// инициализируем кэш
+	err = cache.InitCache(&cfg.Redis)
+	if err != nil {
+		appLogger.Warn("кэш не работает", "error", err)
+	}
+
 	// запускаем RabbitMQ
 
 	// запускаем консумер
