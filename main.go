@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/IPampurin/DelayedNotifier/pkg/cache"
 	"github.com/IPampurin/DelayedNotifier/pkg/configuration"
 	"github.com/IPampurin/DelayedNotifier/pkg/db"
 	"github.com/IPampurin/DelayedNotifier/pkg/server"
@@ -38,10 +39,10 @@ func main() {
 		appLogger.Error("ошибка подключения к БД", "error", err)
 		return
 	}
-	defer db.CloseDB()
+	defer func() { _ = db.CloseDB() }()
 
 	// инициализируем кэш
-	err = cache.InitCache(&cfg.Redis)
+	err = cache.InitRedis(&cfg.Redis)
 	if err != nil {
 		appLogger.Warn("кэш не работает", "error", err)
 	}

@@ -28,13 +28,10 @@ func InitRedis(cfg *configuration.ConfCache) error {
 	// определяем конфигурацию подключения к Redis
 	options := redis.Options{
 		Address:   fmt.Sprintf("%s:%d", cfg.HostName, cfg.Port),
-		Password:  fmt.Sprintf("%s", cfg.Password),
+		Password:  cfg.Password,
 		MaxMemory: "100mb",
 		Policy:    "allkeys-lru",
 	}
-
-	// получаем экземпляр клиента
-	client := redis.New(options.Address, options.Password, cfg.DB)
 
 	// пробуем подключиться
 	client, err := redis.Connect(options)
@@ -47,8 +44,14 @@ func InitRedis(cfg *configuration.ConfCache) error {
 		return fmt.Errorf("ошибка подключения к Redis: %v\n", err)
 	}
 
+	// сохраняем в глобальную переменную
+	defaultClient = &ClientRedis{client}
+
 	// загружаем начальные данные
-	err = loadDataToCache(context.Background(), cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = loadDataToCache(ctx, cfg)
 	if err != nil {
 		log.Printf("ошибка загрузки первичных данных в кэш: %v", err)
 		return err
@@ -69,7 +72,7 @@ func loadDataToCache(ctx context.Context, cfg *configuration.ConfCache) error {
 	// получаем заказы до установленного порога
 	notifications, err := db.GetClientDB().GetNotificationsLastPeriod(ctx, cfg.Warming)
 	if err != nil {
-		return fmt.Errorf("ошибка при прогреве кэша: %v", err)
+		return fmt.Errorf("ошибка получения уведомлений из БД при прогреве кэша: %v", err)
 	}
 	// проверяем были ли уведомления в БД
 	if len(notifications) == 0 {
@@ -81,7 +84,7 @@ func loadDataToCache(ctx context.Context, cfg *configuration.ConfCache) error {
 
 	// сохраняем данные в redis
 	for i := range notifications {
-		key := fmt.Sprintf("%v", notifications[i].UID)
+		key := notifications[i].UID.String()
 		err := GetClientRedis().SetWithExpirationAndRetry(ctx, strategy, key, notifications[i], cfg.TTL)
 		if err != nil {
 			log.Printf("ошибка добавления уведомления %s при прогреве кэша", key)

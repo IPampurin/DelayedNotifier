@@ -13,16 +13,16 @@ import (
 
 // Notification — структура, описывающая уведомление и соответствующая строке в таблице notifications БД
 type Notification struct {
-	UID        uuid.UUID    // uid, UUID для глобальной уникальности
-	UserID     int          // user_id, адресат уведомления (кому)
-	Channel    []string     // channel, канал доставки (email/telegram)
-	Content    string       // content, само уведомление
-	Status     string       // status, текущий статус (scheduled/sent/failed)
-	SendFor    time.Time    // send_for, когда планируется отправить (гггг.мм.дд чч:мм:сс)
-	SendAt     sql.NullTime // send_at, фактическое время отправки (гггг.мм.дд чч:мм:сс), момент получения Consumer подтверждения от внешнего API
-	RetryCount int          // retry_count, счетчик попыток отправки (для Consumer)
-	LastError  string       // last_error, информация о сбое при крайней отправке
-	CreatedAt  time.Time    // created_at, время создания
+	UID        uuid.UUID    `json:"uid"`                  // uid, UUID для глобальной уникальности
+	UserID     int          `json:"user_id"`              // user_id, адресат уведомления (кому)
+	Channel    []string     `json:"channel"`              // channel, канал доставки (email/telegram)
+	Content    string       `json:"content"`              // content, само уведомление
+	Status     string       `json:"status"`               // status, текущий статус (scheduled/sent/failed)
+	SendFor    time.Time    `json:"send_for"`             // send_for, когда планируется отправить (гггг.мм.дд чч:мм:сс)
+	SendAt     sql.NullTime `json:"send_at,omitempty"`    // send_at, фактическое время отправки (гггг.мм.дд чч:мм:сс), момент получения Consumer подтверждения от внешнего API
+	RetryCount int          `json:"retry_count"`          // retry_count, счетчик попыток отправки (для Consumer)
+	LastError  string       `json:"last_error,omitempty"` // last_error, информация о сбое при крайней отправке
+	CreatedAt  time.Time    `json:"created_at"`           // created_at, время создания
 }
 
 // ClientPostgres хранит подключение к БД
@@ -89,8 +89,11 @@ func (c *ClientPostgres) CreateNotification(ctx context.Context, n *Notification
 	query := `INSERT INTO notifications (uid, user_id, channel, content, status, send_for, created_at)
 	          VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := c.ExecContext(ctx, query, n.UID, n.UserID, dbpg.Array(&n.Channel), n.Content, n.Status, n.SendFor, n.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("ошибка запроса CreateNotification: %w", err)
+	}
 
-	return fmt.Errorf("ошибка запроса CreateNotification: %w", err)
+	return nil
 }
 
 // GetNotification возвращает уведомление по UID
@@ -128,7 +131,7 @@ func (c *ClientPostgres) CancelNotification(ctx context.Context, uid uuid.UUID) 
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("ошибка запроса CancelNotification: %w", sql.ErrNoRows) // ошибка "уведомление не найдено или уже не scheduled"
+		return sql.ErrNoRows // ошибка "уведомление не найдено или уже не scheduled"
 	}
 
 	return nil
@@ -142,8 +145,11 @@ func (c *ClientPostgres) UpdateNotificationStatus(ctx context.Context, uid uuid.
                  SET status = $1, send_at = $2, retry_count = $3, last_error = $4
 		       WHERE uid = $5`
 	_, err := c.ExecContext(ctx, query, status, sentAt, retryCount, lastError, uid)
+	if err != nil {
+		return fmt.Errorf("ошибка запроса UpdateNotificationStatus: %w", err)
+	}
 
-	return fmt.Errorf("ошибка запроса UpdateNotificationStatus: %w", err)
+	return nil
 }
 
 // GetNotification возвращает уведомления созданные позднее указанной даты
