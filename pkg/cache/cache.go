@@ -54,8 +54,6 @@ func InitRedis(cfg *configuration.ConfCache) error {
 		return err
 	}
 
-	log.Println("Загрузка первичных данных в кэш завершена.")
-
 	return nil
 }
 
@@ -65,8 +63,6 @@ func GetClientRedis() *ClientRedis {
 	return defaultClient
 }
 
-// val, err := client.GetWithRetry(ctx, strategy, "key") получение значения в соответствии со стратегией ретраев
-
 // loadDataToCache загружает данные за последнее время в кэш при старте
 func loadDataToCache(ctx context.Context, cfg *configuration.ConfCache) error {
 
@@ -74,6 +70,10 @@ func loadDataToCache(ctx context.Context, cfg *configuration.ConfCache) error {
 	notifications, err := db.GetClientDB().GetNotificationsLastPeriod(ctx, cfg.Warming)
 	if err != nil {
 		return fmt.Errorf("ошибка при прогреве кэша: %v", err)
+	}
+	// проверяем были ли уведомления в БД
+	if len(notifications) == 0 {
+		return nil
 	}
 
 	// определяем стратегию ретраев
