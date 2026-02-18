@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/IPampurin/DelayedNotifier/pkg/api"
@@ -11,12 +13,12 @@ import (
 	"github.com/wb-go/wbf/logger"
 )
 
-func Run(cfgServer *configuration.ConfServer, log logger.Logger) error {
+func Run(ctx context.Context, cfgServer *configuration.ConfServer, log logger.Logger) error {
 
 	// создаём движок Gin через обёртку ginext
 	engine := ginext.New(cfgServer.GinMode)
 
-	// добавляем стандартные middleware (логгер и восстановление)
+	// добавляем middleware (логгер и восстановление)
 	engine.Use(ginext.Logger(), ginext.Recovery())
 
 	// добавляем свой middleware для структурного логирования запросов
@@ -28,8 +30,7 @@ func Run(cfgServer *configuration.ConfServer, log logger.Logger) error {
 		log.LogRequest(c.Request.Context(), c.Request.Method, c.Request.URL.Path, c.Writer.Status(), duration)
 	})
 
-	// регистрируем эндпоинты согласно заданию
-
+	// регистрируем эндпоинты
 	apiGroup := engine.Group("/notify")
 	{
 		apiGroup.POST("/", api.CreateNotificationHandler(log))
@@ -47,8 +48,39 @@ func Run(cfgServer *configuration.ConfServer, log logger.Logger) error {
 
 	// формируем адрес запуска
 	addr := fmt.Sprintf("%s:%d", cfgServer.HostName, cfgServer.Port)
-	log.Info("запуск HTTP-сервера", "address", addr)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: engine, // engine реализует http.Handler
+	}
 
-	// запускаем сервер (блокирующий вызов)
-	return engine.Run(addr)
+	// канал для ошибок от сервера
+	errCh := make(chan error, 1)
+
+	// запускаем сервер в горутине
+	go func() {
+		log.Info("запуск HTTP-сервера", "address", addr)
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// ожидаем либо сигнала от контекста, либо ошибки запуска
+	select {
+	case <-ctx.Done():
+		log.Info("получен сигнал завершения, останавливаем сервер...")
+		// даём время на завершение текущих запросов (например, 5 секунд)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Error("ошибка при graceful shutdown", "error", err)
+			return err
+		}
+		log.Info("сервер корректно остановлен")
+		return nil
+
+	case err := <-errCh:
+		log.Error("сервер завершился с ошибкой", "error", err)
+		return err
+	}
 }
