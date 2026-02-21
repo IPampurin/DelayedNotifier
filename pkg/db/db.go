@@ -11,13 +11,22 @@ import (
 	"github.com/wb-go/wbf/dbpg"
 )
 
+// константы статусов уведомлений
+const (
+	StatusScheduled  = "scheduled"
+	StatusPublishing = "publishing"
+	StatusSent       = "sent"
+	StatusFailed     = "failed"
+	StatusCancelled  = "cancelled"
+)
+
 // Notification — структура, описывающая уведомление и соответствующая строке в таблице notifications БД
 type Notification struct {
 	UID        uuid.UUID    `json:"uid"`                  // uid, UUID для глобальной уникальности
 	UserID     int          `json:"user_id"`              // user_id, адресат уведомления (кому)
 	Channel    []string     `json:"channel"`              // channel, канал доставки (email/telegram)
 	Content    string       `json:"content"`              // content, само уведомление
-	Status     string       `json:"status"`               // status, текущий статус (scheduled/sent/failed)
+	Status     string       `json:"status"`               // status, текущий статус (scheduled/publishing/sent/failed/cancelled)
 	SendFor    time.Time    `json:"send_for"`             // send_for, когда планируется отправить (гггг.мм.дд чч:мм:сс)
 	SendAt     sql.NullTime `json:"send_at,omitempty"`    // send_at, фактическое время отправки (гггг.мм.дд чч:мм:сс), момент получения Consumer подтверждения от внешнего API
 	RetryCount int          `json:"retry_count"`          // retry_count, счетчик попыток отправки (для Consumer)
@@ -124,8 +133,8 @@ func (c *ClientPostgres) CancelNotification(ctx context.Context, uid uuid.UUID) 
 
 	query := `UPDATE notifications
 	             SET status = 'cancelled'
-			   WHERE uid = $1 AND status = 'scheduled'`
-	result, err := c.ExecContext(ctx, query, uid)
+			   WHERE uid = $1 AND status = $2`
+	result, err := c.ExecContext(ctx, query, uid, StatusScheduled)
 	if err != nil {
 		return fmt.Errorf("ошибка запроса CancelNotification: %w", err)
 	}
@@ -152,7 +161,7 @@ func (c *ClientPostgres) UpdateNotificationStatus(ctx context.Context, uid uuid.
 	return nil
 }
 
-// GetNotification возвращает уведомления созданные позднее указанной даты
+// GetNotification возвращает уведомления созданные позднее указанной даты (для прогрева кэша)
 func (c *ClientPostgres) GetNotificationsLastPeriod(ctx context.Context, lastPeriod time.Duration) ([]*Notification, error) {
 
 	query := `SELECT uid, user_id, channel,
@@ -184,6 +193,43 @@ func (c *ClientPostgres) GetNotificationsLastPeriod(ctx context.Context, lastPer
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("ошибка итерации GetNotificationsLastPeriod: %w", err)
+	}
+
+	return notifications, nil
+}
+
+// GetScheduledNotifications возвращает уведомления для отправки в Rabbit планировщиком
+// (статус scheduled, время отправки теоретически +-(ConfScheduler.Interval)/2 текущему моменту)
+func (c *ClientPostgres) GetScheduledNotifications(ctx context.Context, interval time.Duration) ([]*Notification, error) {
+
+	query := `SELECT uid, user_id, channel,
+	                 content, status, send_for, send_at,
+					 retry_count, last_error, created_at
+	            FROM notifications
+			   WHERE status = $1 AND send_for <= (NOW() + $2/2)` // нижнюю границу на всякий случай не указываем
+
+	rows, err := c.QueryContext(ctx, query, StatusScheduled, interval)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка запроса GetScheduledNotifications: %w", err)
+	}
+	defer rows.Close()
+
+	var notifications []*Notification
+	for rows.Next() {
+		var n Notification
+		var channelSlice []string
+		err := rows.Scan(
+			&n.UID, &n.UserID, dbpg.Array(&channelSlice),
+			&n.Content, &n.Status, &n.SendFor, &n.SendAt,
+			&n.RetryCount, &n.LastError, &n.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования GetScheduledNotifications: %w", err)
+		}
+		n.Channel = channelSlice
+		notifications = append(notifications, &n)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации GetScheduledNotifications: %w", err)
 	}
 
 	return notifications, nil
